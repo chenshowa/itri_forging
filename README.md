@@ -1,6 +1,6 @@
 # itri_forging
 
-StreamingAI.cpp裡面
+##　StreamingAI.cpp裡面
 
 參數startChannel 是enable 的起始腳位
 
