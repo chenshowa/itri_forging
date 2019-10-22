@@ -1,6 +1,6 @@
 startChannel = 0;    Starting to enable port
 channelCount = 16;
   Number of enabled ports
-sectionLength = 256;    sample rate¡F¼Æ¦r·U¤p¨ú¼Ë¥­²v·U°ª¡F¥Ø«eÁÙ¤£ª¾¹D¦p¦óºë±K½Õ¾ã¡A
+sectionLength = 256;    æ•¸å­—æ„ˆå°å–æ¨£é »ç‡æ„ˆé«˜ï¼›ç›®å‰é‚„ä¸çŸ¥é“å¦‚ä½•ç²¾å¯†èª¿æ•´ï¼Œ
 sectionCount = 0;	Number of samples;
 Set 0 to unlimited times
