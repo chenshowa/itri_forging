@@ -3,6 +3,6 @@ startChannel = 0;
 channelCount = 16;
 
 
-sectionLength = 256;    sample rate 
+sectionLength = 256;    sample rate parameter
  
-sectionCount = 0;	sample times
+sectionCount = 0;	  sample times
