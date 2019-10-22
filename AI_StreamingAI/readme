@@ -1,0 +1,8 @@
+startChannel = 0;
+
+channelCount = 16;
+
+
+sectionLength = 256;    sample rate 
+ 
+sectionCount = 0;	sample times
