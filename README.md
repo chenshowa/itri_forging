@@ -1,11 +1,16 @@
 # itri_forging
 
-##　StreamingAI.cpp裡面
+##　StreamingAI.cpp
 
-參數startChannel 是enable 的起始腳位
+### 取樣參數調整
 
-參數channelCount 是enable 的腳位數量
+參數startChannel 是enable 的起始channel
 
-參數sectionLength 是調sample rate的參數；數字愈小取樣頻率愈高；目前還不知道如何精密調整
+參數channelCount 是enable 的channel數量
+
+參數clockRate 是取樣次數;設0表示取樣無限次
 
 參數sectionCount 是取樣次數;設0表示取樣無限次
+
+
+
