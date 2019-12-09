@@ -153,7 +153,7 @@ void* child(void* data)
 
     do
     {
-      cout << "first = " << timestamp_rear << endl;
+
       for(int i = startChannel; i < channelNum; i++)
       {
 
