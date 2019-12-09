@@ -1,8 +1,2 @@
-startChannel = 0;
-
-channelCount = 16;
-
-
-sectionLength = 256;    sample rate parameter
- 
-sectionCount = 0;	  sample times
+secPerShot  // 設定一個模次最長的秒數
+everyPoints // 設定一個模次中，每多少點會再取樣一次，作為畫圖用的資料點
