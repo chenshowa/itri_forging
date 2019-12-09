@@ -1,115 +1,124 @@
-    // am4core.ready(function() {
-
-    // // Themes begin
-    // am4core.useTheme(am4themes_animated);
-    // // Themes end
-
-    // var chart = am4core.create("chartdiv", am4charts.XYChart);
-    // chart.paddingRight = 20;
-
-    // var data = [];
-    // var visits = 10;
-    // for (var i = 1; i < 200; i++) {
-    //   // visits += Math.round((Math.random() < 0.5 ? 1 : -1) * Math.random() * 10);
-    //   visits += 0.001;
-    //   data.push({ date: new Date(2018, 0, i), value: visits });
-    // }
-
-    // chart.data = data;
-
-    // // Create Xaxes
-    // var dateAxis = chart.xAxes.push(new am4charts.DateAxis());
-    // dateAxis.renderer.grid.template.location = 0;
-    // dateAxis.minZoomCount = 5;
-
-    // // this makes the data to be grouped
-    // dateAxis.groupData = true;
-    // dateAxis.groupCount = 500;
-
-    // // Create Yaxes
-    // var valueAxis = chart.yAxes.push(new am4charts.ValueAxis());
-
-    // // Create series
-    // var series = chart.series.push(new am4charts.LineSeries());
-    // series.dataFields.dateX = "date";
-    // series.dataFields.valueY = "value";
-    // series.tooltipText = "{valueY}";
-    // series.tooltip.pointerOrientation = "vertical";
-    // series.tooltip.background.fillOpacity = 0.5;
-
-    // chart.cursor = new am4charts.XYCursor();
-    // chart.cursor.xAxis = dateAxis;
-
-    // var scrollbarX = new am4core.Scrollbar();
-    // scrollbarX.marginBottom = 20;
-    // chart.scrollbarX = scrollbarX;
-
-    // }); // end am4core.ready()
-
-    // 之前的程式，現在用不到了
-    // https://www.amcharts.com/docs/v4/concepts/axes/
-
     // 建立socket連接，等待server“傳送”數據，呼叫callback函数更新圖表
-
-
       // 填入數據
-     
 
     $(document).ready(function() {
-    
+
       console.log("connect socket ready ! ")
       namespace = '/test';
       var socket = io.connect(location.protocol + '//' + document.domain + ':' + location.port + namespace);
-    
-    
+
+
       console.log("connect socket succes ! ")
       socket.on('server_response', function (res) {
         update_mychart(res);
+        ShowValue();
       });
-    
+
     });
 
     var itridata = [];
+    var EigenValue = [];
+    var EigenValue2 = [];
     var update_mychart = function (res) {
 
       console.log("connect update_mychart succes ! ")
-      
-  
-      // 準備數據    
+      var itridata = [];
+
+
+      // 準備數據
+
       console.log(res)
-      itridata.push({
-        scales : res.scales
-        // value : res.value,
-        // value2 : res.value2
+      window.itridata.push({
+        // 插入數據時用來判斷資料儲存長度的工具
+        scales : res.TimeStamp
       })
+
+
       // 插入數據，在超出範圍同時刪除數據，並透過itridata判斷長度
-      if (itridata.length <200){
-      chart.addData( {scales : res.scales, value : res.value, value2 : res.value2}, 0);
+
+        console.log(res.TimeStamp[0].length)
+        if (window.itridata.length <6){
+            window.EigenValue.push( {shotMax : res.shotMax[0], shotMin : res.shotMin[0], shotAvg : res.shotAvg[0]})
+            window.EigenValue2.push( {shotMax : res.shotMax[1], shotMin : res.shotMin[1], shotAvg : res.shotAvg[1]})
+            for (i = 0; i<res.TimeStamp[0].length; i++){
+             console.log(window.itridata.length);
+              chart.addData( {x : res.TimeStamp[0][i], y1 : res.value[0][i], y2 : res.value[1][i]}, 0);
+              // chart.addData( {x : res.TimeStamp[0][i], y1 : res.value[0][i]}, 0);
+            }
         }
-        else if (itridata.length >= 200) 
-            {chart.addData( {scales : res.scales, value : res.value, value2 : res.value2}, 1);
-            itridata.shift();
+          else if (window.itridata.length >= 6) {
+            window.EigenValue.push( {shotMax : res.shotMax[0], shotMin : res.shotMin[0], shotAvg : res.shotAvg[0]})
+            window.EigenValue2.push( {shotMax : res.shotMax[1], shotMin : res.shotMin[1], shotAvg : res.shotAvg[1]})
+            for (i = 0; i<res.TimeStamp[0].length; i++){
+              console.log(window.itridata.length)
+              chart.addData( {x : res.TimeStamp[0][i], y1 : res.value[0][i], y2 : res.value[1][i]}, 1);
+              // chart.addData( {x : res.TimeStamp[0][i], y1 : res.value[0][i]}, 1);
+            }
+            window.itridata.shift();
+            window.EigenValue.shift();
+            window.EigenValue2.shift();
         }
-        
-     
-    //   if (itridata.length <=200){
-        // chart.addData( {scales : itridata.scales}, );
-    //   }
-        // else if (itridata.length >200) {
-        // itridata.shift();
-        // 
-    //   }
-    //   chart.data = itridata;
-      console.log(itridata)
+
+      // console.log(window.itridata)
+      // console.log(window.EigenValue)
+      console.log(chart.data)
       return itridata
     };
+    console.log(window.EigenValue)
+    console.log(chart)
+    var count = 0;
+    function ShowValue(){
+      // console.log(window.EigenValue)
+      // console.log(window.EigenValue[0])
+      temp = window.EigenValue[0]
+      console.log(temp)
+      console.log(typeof(temp))
 
-    
-    // chart.addData({scales : itridata.scales,
-    // value : itridata.value, value2 : itridata.value2}, 1);
-    console.log(update_mychart)
+        document.getElementById("test0").innerHTML = window.EigenValue[0]['shotMax'][0];
+        document.getElementById("test1").innerHTML = window.EigenValue[0]['shotMin'][0];
+        document.getElementById("test2").innerHTML = window.EigenValue[0]['shotAvg'][0];
 
-    
+        document.getElementById("test3").innerHTML = window.EigenValue[0]['shotMax'][1];
+        document.getElementById("test4").innerHTML = window.EigenValue[0]['shotMin'][1];
+        document.getElementById("test5").innerHTML = window.EigenValue[0]['shotAvg'][1];
+
+        // document.getElementById("test6").innerHTML = window.EigenValue[0]['shotMax'][0];
+        // document.getElementById("test7").innerHTML = window.EigenValue[0]['shotMin'][0];
+        // document.getElementById("test8").innerHTML = window.EigenValue[0]['shotAvg'][0];
+//
+        // document.getElementById("test9").innerHTML = window.EigenValue[0]['shotMax'][0];
+        // document.getElementById("test10").innerHTML = window.EigenValue[0]['shotMin'][0];
+        // document.getElementById("test11").innerHTML = window.EigenValue[0]['shotAvg'][0];
+//
+        // document.getElementById("test12").innerHTML = window.EigenValue[0]['shotMax'][0];
+        // document.getElementById("test13").innerHTML = window.EigenValue[0]['shotMin'][0];
+        // document.getElementById("test14").innerHTML = window.EigenValue[0]['shotAvg'][0];
+
+
+        document.getElementById("2test0").innerHTML = window.EigenValue2[0]['shotMax'][0];
+        document.getElementById("2test1").innerHTML = window.EigenValue2[0]['shotMin'][0];
+        document.getElementById("2test2").innerHTML = window.EigenValue2[0]['shotAvg'][0];
+        //
+        document.getElementById("2test3").innerHTML = window.EigenValue2[0]['shotMax'][1];
+        document.getElementById("2test4").innerHTML = window.EigenValue2[0]['shotMin'][1];
+        document.getElementById("2test5").innerHTML = window.EigenValue2[0]['shotAvg'][1];
+        // document.getElementById("2test6").innerHTML = window.EigenValue2[0]['shotMax'][0];
+
+        // document.getElementById("2test7").innerHTML = window.EigenValue2[0]['shotMin'][0];
+        // document.getElementById("2test8").innerHTML = window.EigenValue2[0]['shotAvg'][0];
+// 2
+        // document.getElementById("2test9").innerHTML = window.EigenValue2[0]['shotMax'][0];
+        // document.getElementById("2test10").innerHTML = window.EigenValue2[0]['shotMin'][0];
+        // document.getElementById("2test11").innerHTML = window.EigenValue2[0]['shotAvg'][0];
+// 22
+        // document.getElementById("2test12").innerHTML = window.EigenValue2[0]['shotMax'][0];
+        // document.getElementById("2test13").innerHTML = window.EigenValue2[0]['shotMin'][0];
+        // document.getElementById("2test14").innerHTML = window.EigenValue2[0]['shotAvg'][0];
+
+      console.log(count)
+      console.log("show value")
+    }
+
     var chart = am4core.create("chartdiv", am4charts.XYChart);
 
     am4core.ready(function() {
@@ -120,27 +129,17 @@
       // Themes end7
       chart.hiddenState.properties.opacity = 0;
       chart.padding(0, 0, 0, 0);
-    //   chart.paddingRight = 0;
 
-    
-      // for (var i = 1; i < 200; i++) {
-        // visits += 0.00001;
-        // irtidata.push({ scales : i, value2 : visits });
-        // irtidata.push({ scales : i, value : visits });
-      // }
-
-    
-      // chart.data2 = data2;
-
-
+    chart.dateFormatter.inputDateFormat = "i";
 
     // Create Xaxes
-    var scalesAxis = chart.xAxes.push(new am4charts.ValueAxis());
-    scalesAxis.dataFields.scales = "scales";
-    scalesAxis.renderer.grid.template.location = 0.0001;
+    var scalesAxis = chart.xAxes.push(new am4charts.DateAxis());
+
     scalesAxis.startLocation = 0.5;
     scalesAxis.endLocation = 0.5;
- 
+    // scalesAxis.min = (new Date(2019, 12, 6, 0).getTime());
+    // scalesAxis.max = (new Date(2019, 12, 6, 6).getTime());
+    // scalesAxis.renderer.labels.template.disabled = true;
 
     // Create Yaxes
     var valueAxis = chart.yAxes.push(new am4charts.ValueAxis());
@@ -150,17 +149,18 @@
 
     // Create series
     var series = chart.series.push(new am4charts.LineSeries());
+
     series.name = "channel_1";
-    series.dataFields.valueX = "scales";
-    series.dataFields.valueY = "value";
+    series.dataFields.dateX = "x";
+    series.dataFields.valueY = "y1";
     series.tooltipText = "{valueY}";
     series.tooltip.pointerOrientation = "vertical";
     series.tooltip.background.fillOpacity = 0.5;
 
     var series2 = chart.series.push(new am4charts.LineSeries());
     series2.name = "channel_2";
-    series2.dataFields.valueX = "scales";
-    series2.dataFields.valueY = "value2";
+    series2.dataFields.dateX = "x";
+    series2.dataFields.valueY = "y2";
     series2.tooltipText = "{valueY2}";
     series2.tooltip.pointerOrientation = "vertical";
     series2.tooltip.background.fillOpacity = 0.5;
@@ -169,60 +169,12 @@
     chart.cursor = new am4charts.XYCursor();
     // chart.cursor.xAxis = dateAxis;
 
-    var scrollbarX = new am4core.Scrollbar();
-    scrollbarX.marginBottom = 0.5;
-    chart.scrollbarX = scrollbarX;
+    // var scrollbarX = new am4core.Scrollbar();
+    // scrollbarX.marginBottom = 0.5;
+    // chart.scrollbarX = scrollbarX;
 
     // Add legend
     chart.legend = new am4charts.Legend();
   });
 
    // end am4core.ready()
-
-
-
-
-
-
-
-
-
-
-
-
-
-////////////////////////////////////////////////////////////////////////////////////////////
-
-// 之前的程式，現在用不到了
-
-// chart.data = [{
-//   "scales": 1,
-//   "value": 5
-// }, {
-//   "scales": 2,
-//   "value": 4
-// }, {
-//   "scales": 3,
-//   "value": 6
-// }];
-
-
-// // Create Xaxes
-// var scalesAxis = chart.xAxes.push(new am4charts.scalesAxis());
-// scalesAxis.dataFields.scales = "scales";
-
-// // Create Yaxes
-// // var valueAxis = chart.yAxes.push(new am4charts.ValueAxis());
-// // valueAxis.renderer.grid.template.strokeOpacity = 1;
-// // valueAxis.renderer.grid.template.stroke = am4core.color("#A0CA92");
-// // valueAxis.renderer.grid.template.strokeWidth = 2;
-
-// // Create series
-// var series = chart.series.push(new am4charts.ColumnSeries());
-// series.dataFields.valueY = "value";
-// series.dataFields.scalesX = "scales";
-// series.name = "Sales";
-
-// // Add data
-
-
