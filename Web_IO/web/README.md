@@ -7,4 +7,4 @@
 
 
 
-[![npm version](https://github.com/chenshowa/itri_forging/blob/master/Web_IO/web/%E5%9C%96%E7%89%87.jpg)](https://www.npmjs.com/package/startbootstrap-bare)
+[![npm version](https://github.com/chenshowa/itri_forging/blob/master/Web_IO/web/%E7%B6%B2%E9%A0%81%E5%9C%96%E7%89%87.png)](https://www.npmjs.com/package/startbootstrap-bare)
