@@ -1,4 +1,1 @@
-startChannel = 0;    Starting to enable port
-channelCount = 16;   Number of enabled ports
-sectionLength = 256;    數字愈小取樣頻率愈高；目前還不知道如何精密調整sample rate，
-sectionCount = 0;	Number of samples; Set 0 to unlimited times
+
