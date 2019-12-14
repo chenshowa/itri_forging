@@ -80,11 +80,13 @@ float terminator = 999;
 int         maxCacheSize = channelCount * sectionLength * 200;
 
 double userDataBuffer[USER_BUFFER_SIZE];
-float  floatSensorValueCacheData[channelCount][MAX_CACHE_SIZE];
 
+// 存放取樣數值的circleQueue
+float  floatSensorValueCacheData[channelCount][MAX_CACHE_SIZE];
 int intCacheHeadIndex = -1;
 int intCacheTailIndex = -1;
 
+// 存放每一個shot取樣時間的Queue
 string       timestampQueue[channelCount][1000000];
 int timestampHeadIndex = -1;
 int timestampTailIndex = -1;
@@ -115,7 +117,6 @@ string float2hexstr(float a)
 }
 
 
-
 // 執行緒:將circleQueue的資料存入Database
 void* WriteSensorCachetoDatabase(void* data)
 {
@@ -139,12 +140,12 @@ void* WriteSensorCachetoDatabase(void* data)
 
     do
     {
-      // 將各個通道存在Queue的值串接成SQL指令, 各別存入進去各通道之table
+      // 將各個通道存在circleQueue的值串接成SQL指令, 各別存入進去各通道之table
       for(int i = startChannel; i < channelAmount; i++)
       {
-        //
         SQLinsertDB = "INSERT INTO customSenorSN1_TableSN" + to_string((i + 1)) + " (col, shotMax, shotMin, shotAvg, TimeStamp, GraghData) VALUES ('";
         tmpGragh = " "; 
+
 
         while(1)
         {
@@ -161,7 +162,7 @@ void* WriteSensorCachetoDatabase(void* data)
               deQueueCount++;
           }
 
-          // 若接收到shot的終止flag,則跳出迴圈進行insert資料庫的動作
+          // 若接收到shot的終止flag,則跳出迴圈進行insert資料庫
           if(sampleValue == terminator)
           {
             break;
@@ -199,23 +200,27 @@ void* WriteSensorCachetoDatabase(void* data)
           }
         }
 
-        // 計算平均值，串接insert指令
-        // insert data至資料庫
+
+        // 進行insert資料庫
         if((sampleValue == terminator) && (sampleValue != -1))
         {
 
           if(timestampHeadIndex < timestampTailIndex)
           {
+            // 計算平均值
+            // 串接insert指令
             avg = avg / float((deQueueCount - 1));
-
             SQLinsertDB += "', '" + to_string(max) + "', '" + to_string(min) + "', '" + to_string(avg) + "', '" + timestampQueue[i][++timestampHeadIndex] + "', '" + tmpGragh + "')"; //   " + tmpGragh + "
-
+            
+            // insert data至資料庫
             mysql_query(conn, SQLinsertDB.c_str());
             insertCount++;
           }
+          
           if(channelAmount != 1) postDecacheHeadIndex = intCacheHeadIndex;
         }
 
+        // 回復DeQueue前的Head Index，繼續處理下一個通道資料
         if(channelAmount != 1) intCacheHeadIndex = intialCacheHeadIndex;
         firstDeQueueFlag = true;
         max = 0;
@@ -223,9 +228,9 @@ void* WriteSensorCachetoDatabase(void* data)
         avg = 0;
         deQueueCount = 0;
       }
+      // 回復DeQueue後的Head Index，繼續處理下一批資料
       if(channelAmount != 1) intialCacheHeadIndex = postDecacheHeadIndex;
    }while(1);
-
 
   // mysql_close(conn);
 
@@ -276,7 +281,7 @@ void BDAQCALL OnDataReadyEvent(void * sender, BfdAiEventArgs * args, void *userP
   // printf("%d\n",getDataCount);
 
 
-  // 將各通道存在userDataBuffer的值放入Queue
+    // 將值存入Queue
     for(int32 i = 0; i < USER_BUFFER_SIZE; i += channelCount)
     {
       if(!isFull())
@@ -286,12 +291,13 @@ void BDAQCALL OnDataReadyEvent(void * sender, BfdAiEventArgs * args, void *userP
         
         for(int j = startChannel; j < channelAmount; j++)
         {
-          // Shot開始時，將第一筆資料取得時間放入timestampQueue
+          // Shot開始時，將第一筆資料取得之時間放入timestampQueue
           if(terminatorCount == 0)
           {
             timestampQueue[j][++timestampTailIndex] = getTime();
           }
 
+          // 將各通道存在userDataBuffer的值放入circleQueue
           floatSensorValueCacheData[j][intCacheTailIndex] = userDataBuffer[i + (j - startChannel)];
         }
       }
