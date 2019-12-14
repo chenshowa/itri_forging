@@ -1,2 +1,7 @@
+startChannel // enable 的起始channel
+channelCount // enable 的channel數量
+sectionCount // 取樣次數;設0表示取樣無限次
+clockRate    // 取樣頻率
+
 secPerShot  // 設定一個模次最長的秒數
 everyPoints // 設定一個模次中，每多少點會再取樣一次，作為畫圖用的資料點
