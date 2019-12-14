@@ -139,13 +139,8 @@ void* WriteSensorCachetoDatabase(void* data)
 
     do
     {
-<<<<<<< Updated upstream
-
-      for(int i = startChannel; i < channelNum; i++)
-=======
       // 將各個通道存在Queue的值串接成SQL指令, 各別存入進去各通道之table
       for(int i = startChannel; i < channelAmount; i++)
->>>>>>> Stashed changes
       {
         //
         SQLinsertDB = "INSERT INTO customSenorSN1_TableSN" + to_string((i + 1)) + " (col, shotMax, shotMin, shotAvg, TimeStamp, GraghData) VALUES ('";
