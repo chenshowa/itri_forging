@@ -3,7 +3,7 @@ Copyright (c) 1983-2016 Advantech Co., Ltd.
 ********************************************************************************
 THIS IS AN UNPUBLISHED WORK CONTAINING CONFIDENTIAL AND PROPRIETARY INFORMATION
 WHICH IS THE PROPERTY OF ADVANTECH CORP., ANY DISCLOSURE, USE, OR REPRODUCTION,
-WITHOUT WRITTEN AUTHORIZATION FROM ADVANTECH CORP., IS STRICTLY PROHIBITED.
+WITHOUT WRITTEN AUTHORIZATION FROM ADVANTECH CORP., IS STRICTLY PROHIBITED. 
 
 ================================================================================
 REVISION HISTORY
@@ -15,22 +15,22 @@ $NoKeywords:  $
 /******************************************************************************
 *
 * Windows Example:
-*    StreamingAI.cpp
+*    StreamingAIwithTrigger.cpp
 *
 * Example Category:
 *    AI
 *
 * Description:
-*    This example demonstrates how to use Streaming AI function.
+*    This example demonstrates how to use Streaming AI with Trigger Delay to Start function.
 *
 * Instructions for Running:
-*    1. Set the 'deviceDescription' which can get from system device manager for opening the device.
-*	   2. Set the 'profilePath' to save the profile path of being initialized device.
-*    3. Set the 'startChannel' as the first channel for scan analog samples
+*    1. Set the 'deviceDescription' for opening the device.
+*	  2. Set the 'profilePath' to save the profile path of being initialized device. 
+*    3. Set the 'startChannel' as the first channel for scan analog samples  
 *    4. Set the 'channelCount' to decide how many sequential channels to scan analog samples.
 *    5. Set the 'sectionLength' as the length of data section for Buffered AI.
-*	   6. Set the 'sectionCount' as the count of data section for Buffered AI.
-*	   7. Set the 'clockRate' as the sample rate of data section for Buffered AI.
+*	  6. Set the 'sectionCount' as the count of data section for Buffered AI.
+*    7. Set the 'trigger parameters' to decide trigger property.
 *
 * I/O Connections Overview:
 *    Please refer to your hardware reference manual.
@@ -40,6 +40,7 @@ $NoKeywords:  $
 #include <stdio.h>
 #include "../inc/compatibility.h"
 #include "../../../inc/bdaqctrl.h"
+
 #include <mysql/mysql.h>
 #include <sys/time.h>
 #include <pthread.h>
@@ -49,60 +50,202 @@ $NoKeywords:  $
 #include <math.h>
 using namespace Automation::BDaq;
 using namespace std;
-
-#define       deviceDescription  L"MIC-1810,BID#15"
-const wchar_t* profilePath = L"../../profile/DemoDevice.xml";
-
-int32         startChannel = 0;
 //-----------------------------------------------------------------------------------
 // Configure the following parameters before running the demo
 //-----------------------------------------------------------------------------------
+#define       deviceDescription  L"MIC-1810,BID#15"
+const wchar_t* profilePath = L"../../profile/DemoDevice.xml";
 
-const int32   channelCount = 4;
-const int32   sectionLength = 20000; 
-const int32   sectionCount = 0; 
-const int32   clockRate = 200000;
 
-int secPerShot = 2; // Set how many SECS per SHOT
-int downsamplingNum = 2500; //Set the downsampling data count for gragh
+#define startChannel  0
+#define channelCount  2
+#define sectionLength 1024 //4096 //1024
+#define sectionCount  0
+#define clockRate     50000 //50000
+#define intSecPerShot 2 // Set how many SECS per SHOT
+#define intDownSamplingNum 2500 //Set the downsampling data count for gragh
+
+// users can set 'USER_BUFFER_SIZE' according to demand.
+#define USER_BUFFER_SIZE channelCount*sectionLength 
+double  Data[USER_BUFFER_SIZE]; 
+
+
+// Set trigger parameters
+TriggerAction triggerAction     = DelayToStart;
+ActiveSignal  triggerEdge       = FallingEdge;
+int           triggerDelayCount = 0;
+double        triggerLevel      = 0.2;
+
+//for trigger1 parameters 
+TriggerAction trigger1Action     = DelayToStop;
+ActiveSignal  trigger1Edge       = RisingEdge;
+int           trigger1DelayCount = 0;
+double        trigger1Level      = 0.2;
+
+
 
 //-----------------------------------------------------------------------------------
 // Configure the above parameters before running the demo
 //-----------------------------------------------------------------------------------
 
-int channelAmount = startChannel + channelCount; // the total number of channels
-int insertCount = 0;
-int terminatorCount = 0;
-float terminator = 999;
+int intEndChannel = startChannel + channelCount; // the end channel
+int intEnQueueCount = 0;
+int NumOfShot = 0;
+#define TERMINATOR 999.0
 
-#define       USER_BUFFER_SIZE   channelCount * sectionLength
-#define       MAX_CACHE_SIZE channelCount * sectionLength * 200
-int         maxCacheSize = channelCount * sectionLength * 200;
 
-double userDataBuffer[USER_BUFFER_SIZE];
+#define MAX_QUEUE_SIZE channelCount * sectionLength * 2000
+int  intMaxQueueSize = channelCount * sectionLength * 2000;
 
 // 存放取樣數值的circleQueue
-float  floatSensorValueCacheData[channelCount][MAX_CACHE_SIZE];
-int intCacheHeadIndex = -1;
-int intCacheTailIndex = -1;
+float  floatSensorValueQueueData[channelCount][MAX_QUEUE_SIZE];
+int intQueueHeadIndex = -1;
+int intQueueTailIndex = -1;
+int intPullQueueHeadIndex = 0;
 
-// 存放每一個shot取樣時間的Queue
-string       timestampQueue[channelCount][1000000];
-int timestampHeadIndex = -1;
-int timestampTailIndex = -1;
+// 存放每一shot取樣時間的Queue
+#define MAX_TIME_QUEUE_SIZE  10000
+int intMaxTimeQueueSize = MAX_TIME_QUEUE_SIZE;
+string stringTimeQueue[MAX_TIME_QUEUE_SIZE];
+int intTimeQueueHeadIndex = -1;
+int intTimeQueueTailIndex = -1;
 
-// 判斷circleQueue是否已滿
-bool isFull()
+
+// 判斷ValueQueue是否已滿
+bool QueueIsFull()
 {
-    if( (intCacheHeadIndex == intCacheTailIndex + 1) || (intCacheHeadIndex == 0 && intCacheTailIndex == maxCacheSize - 1)) return true;
+   if((intQueueHeadIndex == intQueueTailIndex + 1) || (intQueueHeadIndex == 0 && intQueueTailIndex == intMaxQueueSize - 1)) return true;
+   return false;
+}
+
+// 判斷ValueQueue是否為空
+bool QueueIsEmpty()
+{
+   if(intQueueHeadIndex == -1) return true;
+   return false;
+}
+
+// 存入terminator旗標至每一個channel
+void enValueQueue_TERMINATOR()
+{
+   if(QueueIsFull())
+   {
+      printf("\n Queue is full!! \n");
+   }
+   else
+   {
+      // if(intQueueHeadIndex == -1) intQueueHeadIndex = 0;
+      intQueueTailIndex = (intQueueTailIndex + 1) % intMaxQueueSize;
+
+      for(int channel = startChannel; channel < intEndChannel; channel++)
+      {
+         floatSensorValueQueueData[channel][intQueueTailIndex] = TERMINATOR;
+      }
+   }
+}
+
+// 釋放Queue的空間
+float deValueQueue() 
+{
+    float element;
+    if(QueueIsEmpty())
+    {
+        sleep(0.5);
+    }
+    else
+    {
+         if (intQueueHeadIndex == intQueueTailIndex)
+         {
+               intQueueHeadIndex = -1;
+               intQueueTailIndex = -1;
+         }
+         else
+         {
+            intQueueHeadIndex = intPullQueueHeadIndex ;
+         }
+         
+         // for better deValueQueue() 
+         // intQueueHeadIndex = intPullQueueHeadIndex ;
+         // if (intQueueHeadIndex == intQueueTailIndex)
+         // {
+         //    intQueueHeadIndex = -1;
+         //    intQueueTailIndex = -1;
+         //    intPullQueueHeadIndex = 0;
+         // }
+
+        return element;
+    }
+}
+
+// 取出Queue的值
+float pullValueQueue(int channel)
+{
+    float element;
+    if(QueueIsEmpty())
+    {
+        sleep(0.5);
+    }
+    else
+    {
+        element = floatSensorValueQueueData[channel][intPullQueueHeadIndex];
+        if (intPullQueueHeadIndex == intQueueTailIndex)
+        {
+            printf("\n Queue is Empty!! \n");
+        } 
+        else
+        {
+            intPullQueueHeadIndex = (intPullQueueHeadIndex + 1) % intMaxQueueSize;
+        }
+        return element;
+    }
+}
+
+
+// Operation with time Queue
+bool TimeQueueIsFull()
+{
+    if((intTimeQueueHeadIndex == intTimeQueueTailIndex + 1) || (intTimeQueueHeadIndex == 0 && intTimeQueueTailIndex == intMaxTimeQueueSize - 1)) return true;
+    return false;
+}
+bool TimeQueueIsEmpty()
+{
+    if(intTimeQueueHeadIndex == intTimeQueueTailIndex) return true;
     return false;
 }
 
-// 判斷circleQueue是否為空
-bool isEmpty()
+void enTimeQueue( string element)
 {
-    if(intCacheHeadIndex == intCacheTailIndex) return true;
-    return false;
+    if(TimeQueueIsFull()) printf("\n Time Queue is full!! \n");
+    else
+    {
+        if(intTimeQueueHeadIndex == -1) intTimeQueueHeadIndex = 0;
+        intTimeQueueTailIndex = (intTimeQueueTailIndex + 1) % intMaxTimeQueueSize;
+        stringTimeQueue[intTimeQueueTailIndex] = element;
+      //   cout << element << endl;
+    }
+}
+
+string deTimeQueue()
+{
+    string element;
+    if(TimeQueueIsEmpty())
+    {
+        return "-1";
+    }
+    else
+    {
+        element = stringTimeQueue[intTimeQueueHeadIndex];
+        if (intTimeQueueHeadIndex == intTimeQueueTailIndex)
+        {
+            intTimeQueueHeadIndex = -1;
+            intTimeQueueTailIndex = -1;
+        }
+        else
+        {
+            intTimeQueueHeadIndex = (intTimeQueueHeadIndex + 1) % intMaxTimeQueueSize;
+        }
+        return(element);
+    }
 }
 
 
@@ -112,139 +255,46 @@ string float2hexstr(float a)
   int* q = (int*)&a;
   stringstream my_ss;
   my_ss << hex << *q;
-  string res1 = "0x" + my_ss.str() ;
+  string res1 = my_ss.str() ;
   return res1;
 }
 
-
-// 執行緒:將circleQueue的資料存入Database
-void* WriteSensorCachetoDatabase(void* data)
+// 得出最大、最小、加總值
+void MaxMinSum(float *val,float *max, float *min, float *avg)
 {
-  MYSQL* conn;
-  conn = mysql_init(0);
-  conn = mysql_real_connect(conn, "127.0.0.1", "root2", "rootroot", "forging", 0, NULL, 0);
-  sleep(1);
-
-
-  string SQLinsertDB;
-  string tmpGragh;
-  string tmpValue;
-  float sampleValue;
-  float max = 0, min = 0, avg = 0;
-  int deQueueCount = 0;
-  bool firstDeQueueFlag = true;
-  int intialCacheHeadIndex = 0;
-  int postDecacheHeadIndex = 0;
-  int GraghCount = 0;
-
-
-    do
-    {
-      // 將各個通道存在circleQueue的值串接成SQL指令, 各別存入進去各通道之table
-      for(int i = startChannel; i < channelAmount; i++)
-      {
-        SQLinsertDB = "INSERT INTO customSenorSN1_TableSN" + to_string((i + 1)) + " (col, shotMax, shotMin, shotAvg, TimeStamp, GraghData) VALUES ('";
-        tmpGragh = " "; 
-
-
-        while(1)
-        {
-          if(isEmpty())
-          {
-            if(sampleValue == terminator) sampleValue = -1;
-            sleep(0.25);
-          }
-          else
-          {
-              // 取出存放在Queue裡面的值
-              sampleValue = floatSensorValueCacheData[i][intCacheHeadIndex];
-              intCacheHeadIndex = (intCacheHeadIndex + 1) % maxCacheSize;
-              deQueueCount++;
-          }
-
-          // 若接收到shot的終止flag,則跳出迴圈進行insert資料庫
-          if(sampleValue == terminator)
-          {
-            break;
-          }
-
-          // 將資料轉換為十六進位的字串
-          tmpValue = float2hexstr(sampleValue);
-          SQLinsertDB += (tmpValue + " ");
-          avg += sampleValue;
-
-          // 判斷最大值, 最小值
-          if(firstDeQueueFlag)
-          {
-            max = sampleValue;
-            min = max;
-            firstDeQueueFlag = false;
-          }
-          else
-          {
-            if(sampleValue > max)
-            {
-              max = sampleValue;
-            }
-            else if(sampleValue < min)
-            {
-              min = sampleValue;
-            }
-          }
-
-          // 串接繪圖用的字串
-          GraghCount++;
-          if(( GraghCount % downsamplingNum ) == 0 )
-          {
-            tmpGragh += (to_string(sampleValue) + " ");
-          }
-        }
-
-
-        // 進行insert資料庫
-        if((sampleValue == terminator) && (sampleValue != -1))
-        {
-
-          if(timestampHeadIndex < timestampTailIndex)
-          {
-            // 計算平均值
-            // 串接insert指令
-            avg = avg / float((deQueueCount - 1));
-            SQLinsertDB += "', '" + to_string(max) + "', '" + to_string(min) + "', '" + to_string(avg) + "', '" + timestampQueue[i][++timestampHeadIndex] + "', '" + tmpGragh + "')"; //   " + tmpGragh + "
-            
-            // insert data至資料庫
-            mysql_query(conn, SQLinsertDB.c_str());
-            insertCount++;
-          }
-          
-          if(channelAmount != 1) postDecacheHeadIndex = intCacheHeadIndex;
-        }
-
-        // 回復DeQueue前的Head Index，繼續處理下一個通道資料
-        if(channelAmount != 1) intCacheHeadIndex = intialCacheHeadIndex;
-        firstDeQueueFlag = true;
-        max = 0;
-        min = 0;
-        avg = 0;
-        deQueueCount = 0;
-      }
-      // 回復DeQueue後的Head Index，繼續處理下一批資料
-      if(channelAmount != 1) intialCacheHeadIndex = postDecacheHeadIndex;
-   }while(1);
-
-  // mysql_close(conn);
-
-  pthread_exit(NULL); // 離開子執行緒
+  *avg += *val;
+  if(*val > *max)
+  {
+    *max = *val;
+  }
+  if(*val < *min)
+  {
+    *min = *val;
+  }
 }
 
+void voidgetTime(char *a)
+{
+	struct timeval tv;
+	struct tm *ptm;
+	char time_string[19];
+	char milliseconds[6];
 
-inline void waitAnyKey(){
+	/* Obtain the time of day, and convert it to a tm struct. */
+	gettimeofday (&tv, NULL);
+	ptm = localtime (&tv.tv_sec);
+	
+	/* Format the date and time, down to a single second. */
+	strftime(time_string, 21, "%Y-%m-%d %H:%M:%S", ptm);
 
-   do{SLEEP(1);} while(!kbhit());
-
+	/* Compute milliseconds from microseconds. */
+	
+	snprintf(a, 27, "%s.%ld", time_string, tv.tv_usec);
+   // printf("%s",a);
+	
 }
 
-string getTime ()
+string getTime()
 {
  struct timeval tv;
  struct tm* ptm;
@@ -269,156 +319,325 @@ string getTime ()
  return timestamp;
 }
 
+
+void* WriteSensorQueuetoDatabase(void* data)
+{   
+
+  string stringSQLInsertDB;
+  string stringTmpGragh;
+  string stringSensorValue;
+  float floatSensorValue;
+  float floatMax = -10, floatMin = 10, floatAvg = 0;
+  int intDeQueueCount = 0;
+  int intGraghCount = 0;
+  float floatSensorValueBuffer[100000] = {0};
+
+   MYSQL* conn;
+   
+   // keep dequeuing
+   while(1)
+   {
+      if(NumOfShot!=0)
+      {
+         // prepare one shot of each channel
+         for(int i = startChannel; i < intEndChannel; i++)
+         {
+            stringSQLInsertDB += "INSERT INTO customSensorSN1_TableSN" + to_string((i + 1)) + " (col, shotMax, shotMin, shotAvg, TimeStamp, GraghData) VALUES ('";
+            stringTmpGragh = " ";
+
+            floatMax = -10;
+            floatMin = 10;
+            floatAvg = 0;
+            intDeQueueCount = 0;
+            intPullQueueHeadIndex = intQueueHeadIndex + 1;
+
+            // get each value of the shot
+            while(floatSensorValueQueueData[i][intPullQueueHeadIndex] != TERMINATOR)
+            {
+               //  prepare data and buffer with the sensor value
+               floatSensorValue = pullValueQueue(i);
+               floatSensorValueBuffer[intDeQueueCount] = floatSensorValue;
+               intDeQueueCount++;
+               
+
+               // convert sensor value to hex string
+               stringSensorValue = float2hexstr(floatSensorValue);
+               stringSQLInsertDB += (stringSensorValue + " ");
+
+               // Caculate Max, Min, Sum value
+               MaxMinSum(&floatSensorValue,&floatMax,&floatMin,&floatAvg);
+
+
+               // downsampling
+               intGraghCount++;
+               if(( intGraghCount % intDownSamplingNum ) == 0 )
+               {
+                  stringTmpGragh += (to_string(floatSensorValue) + " ");
+               }
+
+            }
+            
+            // Calculate feature value
+            floatAvg = floatAvg / float(intDeQueueCount);
+            // Prepare SQL for one channel
+            stringSQLInsertDB += "', '" + to_string(floatMax) + "', '" + to_string(floatMin) + "', '" + to_string(floatAvg) + "', '" + stringTimeQueue[intTimeQueueHeadIndex] + "', '" + stringTmpGragh + "'); ";
+         } 
+
+         
+         // prevent error trig
+         if (floatMin != 10 ){
+
+            // Execute SQL for all channels
+            conn = mysql_init(0);
+            conn = mysql_real_connect(conn, "127.0.0.1", "root", "rootroot", "forging", 0, NULL, CLIENT_MULTI_STATEMENTS );
+            mysql_query(conn, stringSQLInsertDB.c_str());
+            mysql_close(conn);
+            cout << "Insert data into DB success ";
+            
+         }
+         // else // for better deValueQueue() function 
+         // {
+         //    intQueueTailIndex--;
+         // }
+
+         
+         deTimeQueue();
+         deValueQueue();
+         stringSQLInsertDB = "";
+         NumOfShot--;
+         
+         cout << endl << "Number of shot left in Queue: " << NumOfShot << endl << endl;
+      
+      }
+      else
+      {
+         sleep(1);
+      }
+   }
+
+}
+
+
+
+inline void waitAnyKey()
+{
+   do{SLEEP(1);} while(!kbhit());
+} 
 // This function is used to deal with 'DataReady' Event.
 void BDAQCALL OnDataReadyEvent(void * sender, BfdAiEventArgs * args, void *userParam)
 {
 	int32 returnedCount = 0;
-  WaveformAiCtrl * waveformAiCtrl = NULL;
-  waveformAiCtrl = (WaveformAiCtrl *)sender;
-  int32 getDataCount = MinValue(USER_BUFFER_SIZE, args->Count);
-	waveformAiCtrl->GetData(getDataCount, userDataBuffer, 0, &returnedCount);
-  // in this demo, we show only the first sample of each channel's new data
-  // printf("%d\n",getDataCount);
+	WaveformAiCtrl * waveformAiCtrl = NULL;
+   waveformAiCtrl = (WaveformAiCtrl *)sender;
+   int32 getDataCount = MinValue(USER_BUFFER_SIZE, args->Count);
+   waveformAiCtrl->GetData(getDataCount, Data, 0, &returnedCount);
 
 
-    // 將值存入Queue
-    for(int32 i = 0; i < USER_BUFFER_SIZE; i += channelCount)
-    {
-      if(!isFull())
+   // 將一個shot中的第一個section的取得時間放入TimeQueue
+   if(!TimeQueueIsFull() && intEnQueueCount == 0)
+   {
+      enTimeQueue(getTime());
+   }
+
+   // 將section的數值全部放入Queue
+   for(int32 i = 0; i < USER_BUFFER_SIZE; i += channelCount)
+   {
+      // 將各通道的取樣值放入Queue
+      if(QueueIsFull())
       {
-        if(intCacheHeadIndex == -1) intCacheHeadIndex = 0;
-        intCacheTailIndex = (intCacheTailIndex + 1) % maxCacheSize;
-        
-        for(int j = startChannel; j < channelAmount; j++)
-        {
-          // Shot開始時，將第一筆資料取得之時間放入timestampQueue
-          if(terminatorCount == 0)
-          {
-            timestampQueue[j][++timestampTailIndex] = getTime();
-          }
-
-          // 將各通道存在userDataBuffer的值放入circleQueue
-          floatSensorValueCacheData[j][intCacheTailIndex] = userDataBuffer[i + (j - startChannel)];
-        }
-      }
-
-      terminatorCount++;
-
-      // Shot結束時，在Queue存入一個terminator，作為Shot結束的flag
-      if(terminatorCount == ((clockRate * secPerShot) / channelCount))
+         printf("\n Queue is full!! \n");
+      } 
+      else
       {
-        intCacheTailIndex = (intCacheTailIndex + 1) % maxCacheSize;
-        for(int j = startChannel; j < channelAmount; j++)
-        {
-          floatSensorValueCacheData[j][intCacheTailIndex] = terminator;
-        }
-
-        terminatorCount = 0;
+         if(intQueueHeadIndex == -1) intQueueHeadIndex = 0;
+         intQueueTailIndex = (intQueueTailIndex + 1) % intMaxQueueSize;
+         
+         for(int channel = startChannel; channel < intEndChannel; channel++)
+         {
+            floatSensorValueQueueData[channel][intQueueTailIndex] = Data[i + (channel - startChannel)];
+         }
       }
-    }
+      intEnQueueCount++;
 
-    // THE SAMPLE CODE
-    // printf("%d\n",returnedCount);
-    // for(int32 i = 0; i < channelCount; ++i)
-    // {
-    //     // printf("channel %d:%10.6f \n",(i + startChannel), userDataBuffer[i]);
-    // }
+
+      // Shot到達最大時間時, 結束取樣，接著在Queue存入TERMINATOR
+      if(intEnQueueCount == (clockRate * intSecPerShot )) 
+      {
+         
+         // for no 2s constraint
+         // enValueQueue_TERMINATOR();
+         // NumOfShot++;
+
+
+         intEnQueueCount = 0;
+
+         // prevent error trigger
+         waveformAiCtrl->Stop();
+      }
+   }
+
+
+   // cout << "after EnQueue channel = " << j << ", intTimeHeadIndex = " << intTimeHeadIndex << ", intTimeQueueTailIndex = " << intTimeQueueTailIndex << endl;
+   // cout << "\n Head = " << intQueueHeadIndex << ", Tail = " << intQueueTailIndex << ", pull = "<< intPullQueueHeadIndex << endl;
+
+
+   // in this demo, we show only the first sample of each channel's new data
+	 // printf("Streaming AI get data count is  %d\n", returnedCount);
+   // printf("the first sample for each Channel are:\n");
+   // for(int i = 0; i < channelCount; ++i)
+   // {
+   //    printf("channel %d:%10.6f \n", i + startChannel, Data[i]);   
+   // }
 }
-
-
-//The function is used to deal with 'OverRun' Event.
+// This function is used to deal with 'Overrun' Event.
 void BDAQCALL OnOverRunEvent(void * sender, BfdAiEventArgs * args, void *userParam)
 {
    printf("Streaming AI Overrun: offset = %d, count = %d\n", args->Offset, args->Count);
 }
-
-//The function is used to deal with 'CacheOverflow' Event.
-void BDAQCALL OnCacheOverflowEvent(void * sender, BfdAiEventArgs * args, void *userParam)
+// This function is used to deal with 'CacheOverflow' Event.
+void BDAQCALL OnOverCacheOverflowEvent(void * sender, BfdAiEventArgs * args, void *userParam)
 {
-   printf("Streaming AI Cache Overflow: offset = %d, count = %d\n", args->Offset, args->Count);
+   printf(" Streaming AI Cache Overflow: offset = %d, count = %d\n", args->Offset, args->Count);
 }
-//The function is used to deal with 'Stopped' Event.
+// This function is used to deal with 'Stopped' Event.
 void BDAQCALL OnStoppedEvent(void * sender, BfdAiEventArgs * args, void *userParam)
 {
+
    printf("Streaming AI stopped: offset = %d, count = %d\n", args->Offset, args->Count);
+   
+
+   intEnQueueCount = 0;
+   NumOfShot++;
 
    // input a Terminater for programing stop
-   intCacheTailIndex = (intCacheTailIndex + 1) % maxCacheSize;
-   for(int i = startChannel; i < channelAmount; i++)
-   {
-     floatSensorValueCacheData[i][intCacheTailIndex] = terminator;
-   }
+   enValueQueue_TERMINATOR();
+
+
+   // printf("NumOfShot after stop : %d\n", NumOfShot);
+   // cout << "Head = " << intQueueHeadIndex << ",  Tail = " << intQueueTailIndex << endl;
+   // check the value in Queue
+   // for(int i = intQueueHeadIndex ; i <= intQueueTailIndex ; i++)
+   // {
+   // printf("%f\n", floatSensorValueQueueData[1][i]);
+   // }
+
+   WaveformAiCtrl * waveformAiCtrl = NULL;
+   waveformAiCtrl = (WaveformAiCtrl *)sender;
+   waveformAiCtrl->Start();
+
 }
 
 
 int main(int argc, char* argv[])
 {
-  // printf("Start");
    ErrorCode        ret = Success;
+
    // Step 1: Create a 'WaveformAiCtrl' for buffered AI function.
    WaveformAiCtrl * wfAiCtrl = WaveformAiCtrl::Create();
-
 
 	// Step 2: Set the notification event Handler by which we can known the state of operation effectively.
    wfAiCtrl->addDataReadyHandler(OnDataReadyEvent, NULL);
    wfAiCtrl->addOverrunHandler(OnOverRunEvent, NULL);
-   wfAiCtrl->addCacheOverflowHandler(OnCacheOverflowEvent, NULL);
+   wfAiCtrl->addCacheOverflowHandler(OnOverRunEvent, NULL);
    wfAiCtrl->addStoppedHandler(OnStoppedEvent, NULL);
-	do
-	{
-		 // Step 3: Select a device by device number or device description and specify the access mode.
-		 // in this example we use ModeWrite mode so that we can fully control the device, including configuring, sampling, etc.
-		  DeviceInformation devInfo(deviceDescription);
-		  ret = wfAiCtrl->setSelectedDevice(devInfo);
-		  CHK_RESULT(ret);
+   do
+   {
+      // Step 3: Select a device by device number or device description and specify the access mode.
+      // in this example we use ModeWrite mode so that we can fully control the device, including configuring, sampling, etc.
+      DeviceInformation devInfo(deviceDescription);
+      ret = wfAiCtrl->setSelectedDevice(devInfo);
+      CHK_RESULT(ret);
       ret = wfAiCtrl->LoadProfile(profilePath);//Loads a profile to initialize the device.
       CHK_RESULT(ret);
 
-		  // Step 4: Set necessary parameters.
+      // Step 4: Set necessary parameters. 
       Conversion * conversion = wfAiCtrl->getConversion();
       ret = conversion->setChannelStart(startChannel);
       CHK_RESULT(ret);
       ret = conversion->setChannelCount(channelCount);
       CHK_RESULT(ret);
-      ret = conversion->setClockRate(clockRate);
-      CHK_RESULT(ret);
-		  Record * record = wfAiCtrl->getRecord();
+      Record * record = wfAiCtrl->getRecord();
       ret = record->setSectionCount(sectionCount);//The 0 means setting 'streaming' mode.
+      CHK_RESULT(ret);
+      ret = conversion->setClockRate(clockRate);
       CHK_RESULT(ret);
       ret = record->setSectionLength(sectionLength);
       CHK_RESULT(ret);
-
-      // Step 5: The operation has been started.
-      ret = wfAiCtrl->Prepare();
-		  CHK_RESULT(ret);
-		  ret = wfAiCtrl->Start();
+		
+		//Step 5: Trigger parameters setting
+      //for trrgger0
+      int32 trgCount = wfAiCtrl->getFeatures()->getTriggerCount();      
+		if (trgCount)
+		{
+      Trigger* trigger = wfAiCtrl->getTrigger();
+			ret = trigger->setAction(triggerAction);
       CHK_RESULT(ret);
+			/******************************************************************************************/
+			/*The different kinds of devices have different trigger source. The details see manual.
+			/*In this example, we use the DemoDevice and set 'Ai channel 0' as the default trigger source.
+			/******************************************************************************************/
+      Array<SignalDrop>*  srcs = wfAiCtrl->getFeatures()->getTriggerSources();
+			//int sourceCount = srcs->getLength();//Uncomment this line, user can get the count of supported trigger source.
+			ret = trigger->setSource(srcs->getItem(1));//To DemoDevice, the 1 means 'Ai channel 0'.
+         CHK_RESULT(ret);
+			ret = trigger->setDelayCount(triggerDelayCount);
+         CHK_RESULT(ret);
+			ret = trigger->setEdge(triggerEdge);
+         CHK_RESULT(ret);
+			ret = trigger->setLevel(triggerLevel);
+         CHK_RESULT(ret);
+		}
+		else
+		{
+			printf("The device can not support trigger function! \n any key to quit.");
+			break;
+		} 
 
+    //for trigger1
+    if (trgCount > 1)
+    {
+        Trigger* trigger1 = wfAiCtrl->getTrigger1();
+        ret = trigger1->setAction(trigger1Action);
+        CHK_RESULT(ret);
+        Array<SignalDrop>*  srcs = wfAiCtrl->getFeatures()->getTrigger1Sources();
+        ret = trigger1->setSource(srcs->getItem(1));
+        CHK_RESULT(ret);
+        ret = trigger1->setDelayCount(trigger1DelayCount) ;
+        CHK_RESULT(ret);
+        ret = trigger1->setEdge(trigger1Edge);
+        CHK_RESULT(ret);
+        ret = trigger1->setLevel(trigger1Level);
+        CHK_RESULT(ret);
+    }
 
-      // Step 6: The device is acquiring data.
-      printf("Streaming AI is in progress.\nplease wait...  any key to quit!\n\n");
-      pthread_t threadWriteSensorCachetoDatabase; // 宣告 pthread 變數
-      pthread_create(&threadWriteSensorCachetoDatabase, NULL, WriteSensorCachetoDatabase, NULL); // 建立子執行緒
+      // Step 6: The operation has been started.
+      // We can get samples via event handlers.
+		ret = wfAiCtrl->Prepare();
+		CHK_RESULT(ret);
+    ret = wfAiCtrl->Start();
+    CHK_RESULT(ret);
 
-      // you can code something Here
+      // Step 7: The device is acquiring data.
+		printf("Streaming AI is in progress.\nplease wait...  any key to quit!\n\n");
+      
+    pthread_t threadWriteSensorQueuetoDatabase; // 宣告 pthread 變數
+    pthread_create(&threadWriteSensorQueuetoDatabase, NULL, WriteSensorQueuetoDatabase, NULL); // 建立子執行緒
 
-
-      do
-      {
+    
+    do
+    {
         SLEEP(1);
-      }	while(!kbhit());
+    }	while(!kbhit());
 
-      // step 7: Stop the operation if it is running.
-      ret = wfAiCtrl->Stop();
+      // step 8: Stop the operation if it is running.
+      ret = wfAiCtrl->Stop(); 
       CHK_RESULT(ret);
+    }while(false);
 
-   }while(false);
+	// Step 9: Close device, release any allocated resource.
+	wfAiCtrl->Dispose(); 
 
-
-   // Step 8: Close device, release any allocated resource.
-   wfAiCtrl->Dispose();
-
-	 // If something wrong in this execution, print the error code on screen for tracking.
+	// If something wrong in this execution, print the error code on screen for tracking.
    if(BioFailed(ret))
    {
       wchar_t enumString[256];
@@ -429,7 +648,3 @@ int main(int argc, char* argv[])
    return 0;
 }
 
-// all:
-// 	g++ -o StreamingAI StreamingAI.cpp -lbiodaq -L/usr/include/mysql -lmysqlclient -I/usr/include/mysql -lpthread
-// clean:
-// 	rm StreamingAI
