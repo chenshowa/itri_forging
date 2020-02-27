@@ -58,14 +58,15 @@ using namespace std;
 #define       DEVICE_DESCRIPTION  L"MIC-1810,BID#15"
 const wchar_t* profilePath = L"../../profile/DemoDevice.xml";
 
-
+int maxInsertShot = 400;
+int delayUSeconds = 20000;
 #define START_CHANNEL  0    // startChannel
-#define CHANNEL_COUNT  6
-#define SECTION_LENGTH 1000    //4000
+#define CHANNEL_COUNT  8
+#define SECTION_LENGTH 400    //4000
 #define SECTION_COUNT  0
 #define CLOCK_RATE     50000    // specify sampling frequency of each channel
-#define SEC_PER_SHOT 0.025        // Set max SECS per SHOT
-#define DOWN_SAMPLING_NUM 30   //2500 //Set the downsampling data count for gragh
+#define SEC_PER_SHOT 0.1        // Set max SECS per SHOT
+#define DOWN_SAMPLING_NUM delayUSeconds/1000   //2500 //Set the downsampling data count for gragh
 #define MAX_ENQUEUE_NUMBER CLOCK_RATE*SEC_PER_SHOT
 #define USER_BUFFER_SIZE CHANNEL_COUNT*SECTION_LENGTH 
 double  Data[USER_BUFFER_SIZE];
@@ -101,13 +102,16 @@ bool boolTrigger = true;
 unsigned int intMax_ENQUEUE_NUMBER = (CLOCK_RATE*SEC_PER_SHOT) ;
 unsigned int intEnQueueCount = 0;
 unsigned int intNumOfShot = 0;
+unsigned int intNumOfInsertShot;
+
+char charErrorStatement[300];
 int intStatus = 0;
 bool boolEnQueueThreadErrorFlag = false;
 bool boolDeQueueThreadErrorFlag = false;
 
 
-#define MAX_QUEUE_SIZE CHANNEL_COUNT * SECTION_LENGTH * 700  //2000
-unsigned int  intMaxQueueSize = CHANNEL_COUNT * SECTION_LENGTH * 700; //2000
+#define MAX_QUEUE_SIZE CHANNEL_COUNT * SECTION_LENGTH * 5000  //2000
+unsigned int  intMaxQueueSize = CHANNEL_COUNT * SECTION_LENGTH * 5000; //2000
 
 // 存放取樣數值的Queue
 float  floatSensorValueQueueData[CHANNEL_COUNT][MAX_QUEUE_SIZE];
@@ -122,8 +126,24 @@ int intMaxTimeQueueSize = MAX_TIME_QUEUE_SIZE;
 string stringTimeQueue[MAX_TIME_QUEUE_SIZE];
 int intTimeQueueHeadIndex = -1;
 int intTimeQueueTailIndex = -1;
+int intTheLastTimeTailIndex = 0;
 
 
+int geTimeCount()
+{
+   if(intTimeQueueTailIndex > intTimeQueueHeadIndex)
+   {
+      return (intTimeQueueTailIndex - intTimeQueueHeadIndex);
+   }
+   else if (intTimeQueueTailIndex == intTimeQueueHeadIndex)
+   {
+      return 1;
+   }
+   else
+   {
+      return (intMaxTimeQueueSize - intTimeQueueHeadIndex + intTimeQueueTailIndex);
+   }
+}
 void C_getTime(char *a)
 {
 	struct timeval tv;
@@ -158,10 +178,10 @@ void writeErrorLog(string statement){
    if (f == NULL) { printf(" Open FILE error!!\n");/* Something is wrong   */}
 
    
-   fprintf(f,"%s %s \n", charDatatime, statement.c_str());
+   fprintf(f,"\n%s %s ", charDatatime, statement.c_str());
+   fprintf(f,"Num of shot waiting for insert: %d    left in Queue: %d    Time: %d   ", intNumOfInsertShot, intNumOfShot, geTimeCount()-1);
+
    fclose(f);
-
-
 
 }
 
@@ -354,8 +374,6 @@ string getTime()
 }
 
 
-
-
 struct timespec start, finish, middle1, middle2, delta;
 enum { NS_PER_SECOND = 1000000000 };
 void sub_timespec(struct timespec t1, struct timespec t2, struct timespec *td)
@@ -374,25 +392,6 @@ void sub_timespec(struct timespec t1, struct timespec t2, struct timespec *td)
    }
 }
 
-void* simulateTrigger(void* data)
-{ 
-   while(1)
-   {
-      
-      boolTrigger = true;
-      usleep(25000);
-      
-      boolTrigger = false;
-      enValueQueue_TERMINATOR();
-      intNumOfShot++;
-      intEnQueueCount = 0;
-      usleep(10000);
-
-
-   }
-
-
-}
 
 
 void* WriteSensorQueuetoDatabase(void* data)
@@ -406,24 +405,33 @@ void* WriteSensorQueuetoDatabase(void* data)
    int intGetValueCount = 0;
    int intfloatSensorValueBufferSize = (CLOCK_RATE*SEC_PER_SHOT) + SECTION_LENGTH;
    float floatSensorValueBuffer[intfloatSensorValueBufferSize] = {0};
-
+   
    int intRetval;
    bool boolInsert = true;
 
-   // MYSQL* mysqlCon; 
+
 	MYSQL mysqlCon;
+   // mysql_init(&mysqlCon);
+   // mysql_real_connect(&mysqlCon, MYSQL_SERVER_IP, MYSQL_USER_NAME, MYSQL_PASSWORD, MYSQL_DB_NAME, 0, NULL, CLIENT_MULTI_STATEMENTS);
+
+	// MYSQL* mysqlCon;
+   // mysqlCon = mysql_init(0);
+   // mysqlCon = mysql_real_connect(mysqlCon, MYSQL_SERVER_IP, MYSQL_USER_NAME, MYSQL_PASSWORD, MYSQL_DB_NAME, 0, NULL, CLIENT_MULTI_STATEMENTS);
+
+
 
    // keep dequeuing
    while(1)
    {
-
+      // there is shot in Queue
       if(intNumOfShot!=0) 
       {
 
 
       if(boolInsert){
-      cout << "\nNumber of shot left in Queue: " << intNumOfShot << "   "  ;
+      // cout << "\nNumber of shot left in Queue: " << intNumOfShot << "   "  ;
       boolInsert = false;
+
       }
 
          // prepare one shot of each channel
@@ -447,15 +455,13 @@ void* WriteSensorQueuetoDatabase(void* data)
 
                //  prepare data and buffer with the sensor value
                floatSensorValue = getValueQueue(i);
-               if (intGetValueCount>2263) cout << intGetValueCount << "\n";
 
                floatSensorValueBuffer[intGetValueCount] = floatSensorValue;
                intGetValueCount++;
 
                // convert sensor value to hex string
                stringSensorValue = float2hexstr(floatSensorValue);
-               stringSQLStatement += (stringSensorValue + " ");
-
+               // stringSQLStatement += (stringSensorValue + " ");
 
                // Calculate Max, Min, Sum value
                if(boolFirstGetValueFlag) 
@@ -482,18 +488,18 @@ void* WriteSensorQueuetoDatabase(void* data)
 
             // Prepare SQL for one channel
             stringSQLStatement += "', '" + to_string(floatMax) + "', '" + to_string(floatMin) + "', '" + to_string(floatAvg) + "', '" + stringTimeQueue[intTimeQueueHeadIndex] + "', '" + stringDownSampleSensorValue + "'); ";
+         
          }
 
          
-
-
-
+      intNumOfInsertShot++;
       intNumOfShot--;
 
 
       // Execute SQL for all channels
-      if(intNumOfShot == 0)
+      if(intNumOfShot == 0 || intNumOfInsertShot == maxInsertShot)
       {
+         printf("Num of shot waiting for insert: %d    left in Queue: %d    Time: %d   ", intNumOfInsertShot, intNumOfShot, geTimeCount()-1);
          mysql_init(&mysqlCon);
 
          if (!mysql_real_connect(&mysqlCon, MYSQL_SERVER_IP, MYSQL_USER_NAME, MYSQL_PASSWORD, MYSQL_DB_NAME, 0, NULL, CLIENT_MULTI_STATEMENTS))
@@ -501,20 +507,31 @@ void* WriteSensorQueuetoDatabase(void* data)
             writeErrorLog("\nMYSQL connection failed.");
             if (mysql_errno(&mysqlCon))
             {
-               printf( "\nMYSQL connection error %d: %s", mysql_errno(&mysqlCon), mysql_error(&mysqlCon));
+	            snprintf(charErrorStatement, 300, "\nMYSQL connection error %d: %s", mysql_errno(&mysqlCon), mysql_error(&mysqlCon));
+               writeErrorLog(charErrorStatement);
+               // printf( "\nMYSQL connection error %d: %s", mysql_errno(&mysqlCon), mysql_error(&mysqlCon));
             }
          }
          
          intRetval = mysql_query(&mysqlCon, stringSQLStatement.c_str());
+      //   intRetval = mysql_query(mysqlCon, stringSQLStatement.c_str());
 
-         if (intRetval != EXIT_SUCCESS)
+         // if (intRetval != EXIT_SUCCESS)
+         if (intRetval)
          {
-            writeErrorLog("\nFail to query\n");
+            snprintf(charErrorStatement, 150, "\nError %u: %s\n", mysql_errno(&mysqlCon), mysql_error(&mysqlCon));
+            // snprintf(charErrorStatement, 150, "\nError %u: %s\n", mysql_errno(mysqlCon), mysql_error(mysqlCon));
+            
+            writeErrorLog(charErrorStatement);
          }
          else
          {
-            printf("Insert data into DB success");
+            printf("%lld rows affected\n", mysql_affected_rows(&mysqlCon));
+            // printf("%lld rows affected\n", mysql_affected_rows(mysqlCon));
+
+            // printf("   Insert data success");
          }
+         
          mysql_close(&mysqlCon);
 
 
@@ -522,13 +539,11 @@ void* WriteSensorQueuetoDatabase(void* data)
          stringSQLStatement = "";
 
          boolInsert = true;
+         intNumOfInsertShot = 0;
       }
 
-
-         
          deTimeQueue();
          deValueQueue();
-
       }
       else
       {
@@ -550,7 +565,7 @@ inline void waitAnyKey()
 // This function is used to deal with 'DataReady' Event.
 
 
-
+int intFailCount=0;
 void BDAQCALL OnDataReadyEvent(void * sender, BfdAiEventArgs * args, void *userParam)
 {
 	int32 returnedCount = 0;
@@ -562,26 +577,24 @@ void BDAQCALL OnDataReadyEvent(void * sender, BfdAiEventArgs * args, void *userP
    // 將section的數值放入Queue
    for(int32 i = 0; i < USER_BUFFER_SIZE; i += CHANNEL_COUNT)
    {
-
       if(boolTrigger)
       {
-
          // 將shot的取得時間放入TimeQueue
          if(!TimeQueueIsFull() && intEnQueueCount == 0) 
          {
             enTimeQueue(getTime());
-            if(TimeQueueIsFull())writeErrorLog("[EnQueue thread] Fail to save Timestamp into TimeQueue while TimeQueue is full \n");
-         
+            if(TimeQueueIsFull())
+            {
+               writeErrorLog("[EnQueue thread] Fail to save Timestamp into TimeQueue while TimeQueue is full \n");
+               boolEnQueueThreadErrorFlag = true;
+            }
          }
-
-
 
 
          if(intEnQueueCount > (MAX_ENQUEUE_NUMBER)) 
          {
             if(!boolEnQueueThreadErrorFlag)writeErrorLog("[EnQueue thread] Number of shot out of contraint \n");
             boolEnQueueThreadErrorFlag = true;
-            
          }
          else{
 
@@ -595,31 +608,33 @@ void BDAQCALL OnDataReadyEvent(void * sender, BfdAiEventArgs * args, void *userP
                {
                   floatSensorValueQueueData[channel][intQueueTailIndex] = Data[i + (channel - START_CHANNEL)];
                }
-
                intEnQueueCount++;
-
             } 
             else
             {
                if(!boolEnQueueThreadErrorFlag)
                {
-                  writeErrorLog("[EnQueue thread] Fail to save sensor value into Queue while Queue is full \n");
+                  if (intFailCount==230)
+                  {
+                     intFailCount=0;
+                  }
+                  if(intFailCount==0)
+                  {
+                     writeErrorLog("[EnQueue thread] Fail to save sensor value into Queue while Queue is full \n");
+                  }
+                  intFailCount++;
                }
                boolEnQueueThreadErrorFlag = true;
             }
          }
 
-
-
-
-         // // Shot到達最大時間時, 結束取樣，接著在Queue存入TERMINATOR
+         // Shot max time constraint
          if(intEnQueueCount == MAX_ENQUEUE_NUMBER ) 
          {
             // for time constraint
             enValueQueue_TERMINATOR();
             intNumOfShot++;
             intEnQueueCount = 0;
-
          }
       }
    }
@@ -644,46 +659,39 @@ void BDAQCALL OnStoppedEvent(void * sender, BfdAiEventArgs * args, void *userPar
 {
 
 
-   printf("Streaming AI stopped: offset = %d, count = %d\n", args->Offset, args->Count);
+   // printf("Streaming AI stopped: offset = %d, count = %d\n", args->Offset, args->Count);
    intStatus=1;
 
    if(intEnQueueCount == 0) 
    {
-      writeErrorLog("[OnStoppedEvent] No value be sampled but stopEvent occur\n");  
+      writeErrorLog("[OnStoppedEvent] No value be sampled but stopEvent occur\n");
+      intStatus=1;
    }
    else
    {
-      
-
-      // if(boolEnQueueThreadErrorFlag)
-      // {
-      //    if(intNumOfShot == 0)
-      //    {
-      //       intQueueHeadIndex = -1;
-      //       intQueueTailIndex = -1;
-      //    }
-      //    else
-      //    {
-      //       intQueueTailIndex = intTheLastShotTailIndex;
-      //    }
-      // }
-      // else
-      // {
-      //    intNumOfShot++;
-      //    enValueQueue_TERMINATOR();
-      //    intTheLastShotTailIndex = intQueueTailIndex;
-      // }
-
-      intEnQueueCount = 0;
-      intNumOfShot++;
-      enValueQueue_TERMINATOR();
-      intTheLastShotTailIndex = intQueueTailIndex;
+      if(boolEnQueueThreadErrorFlag)
+      {
+         if(intNumOfShot == 0)
+         {
+            intQueueHeadIndex = -1;
+            intQueueTailIndex = -1;
+         }
+         else
+         {
+            intQueueTailIndex = intTheLastShotTailIndex;
+            intTimeQueueTailIndex = intTheLastTimeTailIndex;
+         }
+      }
+      else
+      {
+         intNumOfShot++;
+         enValueQueue_TERMINATOR();
+         intTheLastShotTailIndex = intQueueTailIndex;
+         intTheLastTimeTailIndex = intTimeQueueTailIndex;
+      }
    }
-
-
-
+   intEnQueueCount = 0;
    boolEnQueueThreadErrorFlag = false;
-
 
 }
 
@@ -739,14 +747,13 @@ printf("Streaming AI is in progress.\nplease wait...  any key to quit!\n\n");
       pthread_t threadWriteSensorQueuetoDatabase; // 宣告 pthread 變數
       pthread_create(&threadWriteSensorQueuetoDatabase, NULL, WriteSensorQueuetoDatabase, NULL); // 建立子執行緒
       
-      // pthread_t threadsimulateTrigger; // 宣告 test pthread 變數
-      // pthread_create(&threadsimulateTrigger, NULL, simulateTrigger, NULL); 
 
 
 
 
-      do
-      {
+   do
+   {
+      
 // if(intStatus==1) 
 // {
 //    ret = wfAiCtrl->Prepare();
@@ -758,15 +765,17 @@ printf("Streaming AI is in progress.\nplease wait...  any key to quit!\n\n");
 
 
 
-
-   boolTrigger = true;
-   usleep(25000);
+   usleep(delayUSeconds);
    
-   boolTrigger = false;
+ret = wfAiCtrl->Stop();
+CHK_RESULT(ret);
 
-   usleep(10000);
+   usleep(delayUSeconds/2);
 
-
+ret = wfAiCtrl->Prepare();
+CHK_RESULT(ret);
+ret = wfAiCtrl->Start();
+CHK_RESULT(ret);
 
 
          // SLEEP(1);
