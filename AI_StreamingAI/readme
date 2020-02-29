@@ -7,6 +7,6 @@ START_CHANNEL      as the first channel for scan analog samples
 CHANNEL_COUNT 
 SECTION_LENGTH 
 SECTION_COUNT  
-CLOCK_RATE         as the first channel for scan analog samples
+CLOCK_RATE         as the sample rate 
 SEC_PER_SHOT 
 DOWN_SAMPLING_NUM  as the interval of down sample point
