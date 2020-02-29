@@ -1,7 +1,12 @@
-startChannel // enable 的起始channel
-channelCount // enable 的channel數量
-sectionCount // 取樣次數;設0表示取樣無限次
-clockRate    // 取樣頻率
+## Description:
+#    This [example demonstrates](https://github.com/chenshowa/itri_forging/tree/master/AI_StreamingAI) how to use MIC-1810 which is produced by Advantech with Trigger to collect voltage value.
 
-secPerShot  // 設定一個模次最長的秒數
-downsamplingNum // 設定一個模次中，每多少點會再取樣一次，作為畫圖用的資料點
+
+
+==START_CHANNEL==   as the first channel for scan analog samples 
+CHANNEL_COUNT 
+SECTION_LENGTH 
+SECTION_COUNT  
+==CLOCK_RATE==     as the first channel for scan analog samples
+SEC_PER_SHOT 
+==DOWN_SAMPLING_NUM=  as the interval of down sample point
