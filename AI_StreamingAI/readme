@@ -1,12 +1,12 @@
-## Description:
-#    This [example demonstrates](https://github.com/chenshowa/itri_forging/tree/master/AI_StreamingAI) how to use MIC-1810 which is produced by Advantech with Trigger to collect voltage value.
+* Description:
+*    This [example demonstrates](https://github.com/chenshowa/itri_forging/tree/master/AI_StreamingAI) how to use MIC-1810 which is produced by Advantech with Trigger to collect voltage value.
 
 
 
-==START_CHANNEL==   as the first channel for scan analog samples 
+START_CHANNEL      as the first channel for scan analog samples 
 CHANNEL_COUNT 
 SECTION_LENGTH 
 SECTION_COUNT  
-==CLOCK_RATE==     as the first channel for scan analog samples
+CLOCK_RATE         as the first channel for scan analog samples
 SEC_PER_SHOT 
-==DOWN_SAMPLING_NUM=  as the interval of down sample point
+DOWN_SAMPLING_NUM  as the interval of down sample point
