@@ -57,16 +57,22 @@ using namespace std;
 //-----------------------------------------------------------------------------------
 #define       DEVICE_DESCRIPTION  L"MIC-1810,BID#15"
 const wchar_t* profilePath = L"../../profile/DemoDevice.xml";
+// 100ms -> 5000
+// 50ms  -> 2500
+// 40ms  -> 2000
+// 30ms  -> 1500
+// 20ms  -> 1000
+// 10ms  ->  500
 
-int maxInsertShot = 400;
-int delayUSeconds = 20000;
+int intMaxInsertShot = 400;
+int intDelayUSeconds = 20000;
 #define START_CHANNEL  0    // startChannel
 #define CHANNEL_COUNT  8
-#define SECTION_LENGTH 400    //4000
+#define SECTION_LENGTH 45    //4000
 #define SECTION_COUNT  0
-#define CLOCK_RATE     50000    // specify sampling frequency of each channel
+#define CLOCK_RATE     5000    // specify sampling frequency of each channel
 #define SEC_PER_SHOT 0.1        // Set max SECS per SHOT
-#define DOWN_SAMPLING_NUM delayUSeconds/1000   //2500 //Set the downsampling data count for gragh
+#define DOWN_SAMPLING_NUM 100    //Set the downsampling data count for gragh
 #define MAX_ENQUEUE_NUMBER CLOCK_RATE*SEC_PER_SHOT
 #define USER_BUFFER_SIZE CHANNEL_COUNT*SECTION_LENGTH 
 double  Data[USER_BUFFER_SIZE];
@@ -82,6 +88,7 @@ TriggerAction triggerAction     = DelayToStart;
 ActiveSignal  triggerEdge       = FallingEdge;
 int           triggerDelayCount = 0;
 double        triggerLevel      = 0.2;
+
 
 //for trigger1 parameters 
 TriggerAction trigger1Action     = DelayToStop;
@@ -133,7 +140,7 @@ int geTimeCount()
 {
    if(intTimeQueueTailIndex > intTimeQueueHeadIndex)
    {
-      return (intTimeQueueTailIndex - intTimeQueueHeadIndex);
+      return (intTimeQueueTailIndex - intTimeQueueHeadIndex) +1;
    }
    else if (intTimeQueueTailIndex == intTimeQueueHeadIndex)
    {
@@ -144,33 +151,74 @@ int geTimeCount()
       return (intMaxTimeQueueSize - intTimeQueueHeadIndex + intTimeQueueTailIndex);
    }
 }
-void C_getTime(char *a)
-{
-	struct timeval tv;
-	struct tm *ptm;
-	char time_string[19];
-	char milliseconds[6];
+// void C_getTime(char *a)
+// {
+// 	struct timeval tv;
+// 	struct tm *ptm;
+// 	char time_string[19];
+// 	char milliseconds[6];
 
-	/* Obtain the time of day, and convert it to a tm struct. */
-	gettimeofday (&tv, NULL);
-	ptm = localtime (&tv.tv_sec);
+// 	/* Obtain the time of day, and convert it to a tm struct. */
+// 	gettimeofday (&tv, NULL);
+// 	ptm = localtime (&tv.tv_sec);
 	
-	/* Format the date and time, down to a single second. */
-	strftime(time_string, 21, "%Y-%m-%d %H:%M:%S", ptm);
+// 	/* Format the date and time, down to a single second. */
+// 	strftime(time_string, 21, "%Y-%m-%d %H:%M:%S", ptm);
 	
-	snprintf(a, 27, "%s.%ld", time_string, tv.tv_usec);
+// 	snprintf(a, 27, "%s.%ld", time_string, tv.tv_usec);
    
-   // printf("%s",a);
-}
+//    // printf("%s",a);
 
+// // use the method
+
+// // char charDatatime[27];
+// // C_getTime(charDatatime);
+// }
+
+string getTime()
+{
+   struct timeval tv;
+   struct tm* ptm;
+   char time_string[40];
+   string milliseconds;
+   string timestamp;
+
+   /* Obtain the time of day, and convert it to a tm struct. */
+   gettimeofday (&tv, NULL);
+   ptm = localtime (&tv.tv_sec);
+
+   /* Format the date and time, down to a single second. */
+   strftime (time_string, sizeof (time_string), "%Y-%m-%d %H:%M:%S", ptm);
+
+   /* Compute milliseconds from microseconds. */
+
+
+   milliseconds = ".";
+   for(int i=0;  i<(6 - to_string(tv.tv_usec).length()); i++)
+   {
+      milliseconds = milliseconds + '0';
+   }
+   milliseconds = milliseconds + to_string((tv.tv_usec));
+
+
+
+   /* Print the formatted time, in seconds, followed by a decimal point
+      and the milliseconds. */
+
+   timestamp = time_string + milliseconds;
+
+   return timestamp;
+}
 
 // void writeErrorLog(char *statement){   // C-code
 void writeErrorLog(string statement){
 
    printf("%s", statement.c_str());
 
-   char charDatatime[27];
-   C_getTime(charDatatime);
+   // char charDatatime[27];
+   // C_getTime(charDatatime);
+
+   string charDatatime = getTime();
 
 
    FILE *f;
@@ -178,7 +226,7 @@ void writeErrorLog(string statement){
    if (f == NULL) { printf(" Open FILE error!!\n");/* Something is wrong   */}
 
    
-   fprintf(f,"\n%s %s ", charDatatime, statement.c_str());
+   fprintf(f,"\n%s %s ", charDatatime.c_str(), statement.c_str());
    fprintf(f,"Num of shot waiting for insert: %d    left in Queue: %d    Time: %d   ", intNumOfInsertShot, intNumOfShot, geTimeCount()-1);
 
    fclose(f);
@@ -316,7 +364,6 @@ string deTimeQueue()
         {
             intTimeQueueHeadIndex = (intTimeQueueHeadIndex + 1) % intMaxTimeQueueSize;
         }
-
         return(element);
     }
 }
@@ -348,30 +395,7 @@ void MaxMinSum(float *val,float *max, float *min, float *avg)
 }
 
 
-string getTime()
-{
- struct timeval tv;
- struct tm* ptm;
- char time_string[40];
- string milliseconds;
- string timestamp;
 
- /* Obtain the time of day, and convert it to a tm struct. */
- gettimeofday (&tv, NULL);
- ptm = localtime (&tv.tv_sec);
-
- /* Format the date and time, down to a single second. */
- strftime (time_string, sizeof (time_string), "%Y-%m-%d %H:%M:%S", ptm);
-
- /* Compute milliseconds from microseconds. */
- milliseconds = "." + to_string(tv.tv_usec);
-
- /* Print the formatted time, in seconds, followed by a decimal point
-   and the milliseconds. */
-
- timestamp = time_string + milliseconds;
- return timestamp;
-}
 
 
 struct timespec start, finish, middle1, middle2, delta;
@@ -392,6 +416,22 @@ void sub_timespec(struct timespec t1, struct timespec t2, struct timespec *td)
    }
 }
 
+void* simulateTrigger(void* data)
+{ 
+   while(1)
+   {
+      
+      boolTrigger = true;
+      usleep(intDelayUSeconds);
+      
+      boolTrigger = false;
+      // enValueQueue_TERMINATOR();
+      // intNumOfShot++;
+      // intEnQueueCount = 0;
+
+      usleep(intDelayUSeconds/2);
+   }
+}
 
 
 void* WriteSensorQueuetoDatabase(void* data)
@@ -461,7 +501,7 @@ void* WriteSensorQueuetoDatabase(void* data)
 
                // convert sensor value to hex string
                stringSensorValue = float2hexstr(floatSensorValue);
-               // stringSQLStatement += (stringSensorValue + " ");
+               stringSQLStatement += (stringSensorValue + " ");
 
                // Calculate Max, Min, Sum value
                if(boolFirstGetValueFlag) 
@@ -497,7 +537,8 @@ void* WriteSensorQueuetoDatabase(void* data)
 
 
       // Execute SQL for all channels
-      if(intNumOfShot == 0 || intNumOfInsertShot == maxInsertShot)
+      // if(intNumOfShot == 0 || intNumOfInsertShot == intMaxInsertShot)
+      if(intNumOfInsertShot == 40 || intNumOfInsertShot == intMaxInsertShot)
       {
          printf("Num of shot waiting for insert: %d    left in Queue: %d    Time: %d   ", intNumOfInsertShot, intNumOfShot, geTimeCount()-1);
          mysql_init(&mysqlCon);
@@ -552,8 +593,6 @@ void* WriteSensorQueuetoDatabase(void* data)
       }
    }
 }
-
-
 
 
 
@@ -747,6 +786,8 @@ printf("Streaming AI is in progress.\nplease wait...  any key to quit!\n\n");
       pthread_t threadWriteSensorQueuetoDatabase; // 宣告 pthread 變數
       pthread_create(&threadWriteSensorQueuetoDatabase, NULL, WriteSensorQueuetoDatabase, NULL); // 建立子執行緒
       
+      pthread_t threadsimulateTrigger; // 宣告 test pthread 變數
+      pthread_create(&threadsimulateTrigger, NULL, simulateTrigger, NULL); 
 
 
 
@@ -765,12 +806,12 @@ printf("Streaming AI is in progress.\nplease wait...  any key to quit!\n\n");
 
 
 
-   usleep(delayUSeconds);
+   usleep(intDelayUSeconds);
    
 ret = wfAiCtrl->Stop();
 CHK_RESULT(ret);
 
-   usleep(delayUSeconds/2);
+   usleep(intDelayUSeconds/2);
 
 ret = wfAiCtrl->Prepare();
 CHK_RESULT(ret);
